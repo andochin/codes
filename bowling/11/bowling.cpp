@@ -14,6 +14,9 @@
 #include <cstdio>
 #include <cctype>
 
+//
+// 型の定義
+//
 enum frame_result_type { None, Normal, Spare, Strike, Last };
 typedef std::vector<int> score_of_throw_type;
 typedef score_of_throw_type::size_type score_index_type;
@@ -30,12 +33,19 @@ frame_type& set_frame_result_type(frame_type& frame, frame_result_type frame_res
   return frame;
 }
 
-const int number_of_pin = 10;
-const int frames_in_game = 10;
-const int max_throw = frames_in_game * 2 + 1;
-const std::string valid_chars("0123456789SG");
+//
+// 定数
+//
+const int number_of_pin = 10;                   // ピンの数
+const int frames_in_game = 10;                  // フレーム数
+const int max_throw = frames_in_game * 2 + 1;   // 最大投球数
+const std::string valid_chars("0123456789SG");  // 入力可能文字
 
+//
 // フレームのスコアを計算する
+// @param frame
+// @param score_of_throw
+//
 int get_frame_score(const frame_type& frame, const score_of_throw_type& score_of_throw)
 {
   int   result = 0;
@@ -57,7 +67,12 @@ int get_frame_score(const frame_type& frame, const score_of_throw_type& score_of
   return result;
 }
 
+
+//
 // スコア表を描画する
+// @param frame_data
+// @param score_of_throw
+//
 void draw_score(const game_type& frame_data, const score_of_throw_type& score_of_throw)
 {
   int last_index = frames_in_game - 1;
@@ -121,6 +136,9 @@ void draw_score(const game_type& frame_data, const score_of_throw_type& score_of
 }
 
 
+//
+// メイン
+//
 int main()
 {
   using namespace std;
@@ -132,9 +150,18 @@ int main()
   bool                  next_frame = true;
   bool                  game_over = false;
 
+  //
+  // フレームループ開始
+  // ループ処理は一投。最終フレームの最終投で終了。
+  // 投げる数は投球結果によって異なるり、必ず一投以上投げるので、doループ
+  //
   do {
+    // 次のフレームになるか？
     if(next_frame) {
+      // 次のフレーム。
+      // フレーム数更新
       ++frame_index;
+      // フレームデータの生成。通常フレームか最終フレームかで生成が異なる。
 	  frame_data[frame_index] = make_pair(throw_in_game, (frame_index == (frames_in_game - 1)) ? Last : Normal);
       next_frame = false;
     }
@@ -142,29 +169,30 @@ int main()
     auto& current_frame = frame_data[frame_index];
     auto throw_in_frame = throw_in_game - get_score_index(current_frame);
     // 投球のスコアの入力
-    char score;
-    std::cin >> score;
-    score = toupper(score); // Convert to upper case1
-    score = (score == 'G') ? '0' : score;
-    auto pos = valid_chars.find(score);
-    // Check input character.
-    if(pos == std::string::npos) {
-      // Input character is incorrect.
-      cout << "Invalid character: " << score << endl;
+    char score;                             // スコア入力用
+    std::cin >> score;                      // スコアの入力
+    score = toupper(score);                 // 大文字へ変換
+    score = (score == 'G') ? '0' : score;   // ガーターを表す'G'は'0'に変換
+    auto pos = valid_chars.find(score);     // 有効文字テーブルから文字を検索。インデックスが入力値
+    if(pos == std::string::npos) {          // 入力文字の有効チェック。posがnposであれば不正文字
+      // 不正文字入力
+      cout << score << " は不正な文字です:" << endl;
       continue;
     }
 
-    // 投球のスコアを保存する。投球がスペアもしくはストライクであれば、残っているピンの数がスコア
+    // 投球のスコアを保存する。
+    // スペアもしくはストライクであれば、残っているピンの数がスコア
     if(get_frame_result_type(current_frame) == Last) {
       // 最終フレーム
       if(score == 'S') {
+        // ストライクもしくはスペア
         switch(throw_in_frame) {
         case 2:
           game_over = true;
-        case 0:
+        case 0: // 一投目。必ず総ピン数
           score_of_throw[throw_in_game] = number_of_pin;
           break;
-        case 1:
+        case 1: //二投目。 一投目がストライクならピン数、そうでなければ残ピン数
           score_of_throw[throw_in_game] = (score_of_throw[get_score_index(current_frame)] != number_of_pin)
                                         ?  number_of_pin - score_of_throw[get_score_index(current_frame)]
                                         : number_of_pin;
@@ -173,6 +201,7 @@ int main()
           exit(0);
         }
       } else {
+        // 最終フレーム
         score_of_throw[throw_in_game] = pos;
         auto score_of_frame = score_of_throw[get_score_index(current_frame)] + pos;
         if(((throw_in_frame == 1) && (score_of_frame < number_of_pin)) || (throw_in_frame == 2)) {
