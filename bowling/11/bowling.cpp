@@ -20,16 +20,21 @@
 enum frame_result_type { None, Normal, Spare, Strike, Last };
 typedef std::vector<int> score_of_throw_type;
 typedef score_of_throw_type::size_type score_index_type;
-typedef std::pair<score_index_type, frame_result_type> frame_type;
+typedef std::tuple<score_index_type, frame_result_type> frame_type;
 typedef std::vector<frame_type> game_type;
-score_index_type get_score_index(const frame_type& frame) { return frame.first; }
-frame_type set_score_index(frame_type& frame, score_index_type score_index) {
-  frame.first = score_index;
+
+constexpr score_index_type& get_score_index_of_frame(frame_type& frame) { return std::get<0>(frame); }
+constexpr const score_index_type& get_score_index_of_frame(const frame_type& frame) { return std::get<0>(frame); }
+constexpr frame_result_type& get_frame_result(frame_type& frame) { return std::get<1>(frame); }
+constexpr const frame_result_type& get_frame_result(const frame_type& frame) { return std::get<1>(frame); }
+
+frame_type& set_score_index(frame_type& frame, score_index_type score_index) {
+  get_score_index_of_frame(frame) = score_index;
   return frame;
 }
-frame_result_type get_frame_result_type(const frame_type& frame) { return frame.second; }
+
 frame_type& set_frame_result_type(frame_type& frame, frame_result_type frame_result) {
-  frame.second = frame_result;
+  std::get<1>(frame) = frame_result;
   return frame;
 }
 
@@ -48,23 +53,18 @@ const std::string valid_chars("0123456789SG");  // 入力可能文字
 //
 int get_frame_score(const frame_type& frame, const score_of_throw_type& score_of_throw)
 {
-  int   result = 0;
-  auto index = get_score_index(frame);
+  auto frame_result = get_frame_result(frame);
 
-  switch(get_frame_result_type(frame)) {
-  case Normal:
-    result = score_of_throw[index] + score_of_throw[index + 1];
-    break;
-  case Spare:
-  case Strike:
-  case Last:
-    result = std::accumulate(&score_of_throw[index], &score_of_throw[index+3], 0);
-    break;
-  default:
-    break;
+  if(frame_result == None) {
+    return 0;   // 未投球なら0
   }
 
-  return result;
+  // 通常ならフレーム先頭から２投分。それ以外（ストライク・スペア・最終フレーム）なら３投分
+  // の合計がフレームスコアとなる
+  auto index = get_score_index_of_frame(frame);
+  return std::accumulate(&score_of_throw[index],
+                         &score_of_throw[index + (frame_result == Normal ? 2 : 3)]
+                         , 0);
 }
 
 
@@ -77,12 +77,12 @@ void draw_score(const game_type& frame_data, const score_of_throw_type& score_of
 {
   int last_index = frames_in_game - 1;
 
-  // Draw upper line (throw result)
+  // 上段（投球結果）の出力
   for(int i = 0; i < last_index; ++i) {
     char score[2] = { '-', '-' };
-	size_t index = get_score_index(frame_data[i]);
+    auto index = get_score_index_of_frame(frame_data[i]);
 
-    switch(get_frame_result_type(frame_data[i])) {
+    switch(get_frame_result(frame_data[i])) {
     case Normal:
       score[0] = '0' + score_of_throw[index];
       score[1] = '0' + score_of_throw[index + 1];
@@ -100,24 +100,27 @@ void draw_score(const game_type& frame_data, const score_of_throw_type& score_of
     }
     std::printf("|%c|%c", score[0], score[1]);
   }
-  // Last frame
-  if(get_frame_result_type(frame_data[last_index]) == Last) {
-    char score[3] = { '-', '-', '-' }; 
-	size_t index = get_score_index(frame_data[last_index]);
 
-	score[0] = (score_of_throw[index] == number_of_pin) ? 'x' : '0' + score_of_throw[index];
-	score[1] = (score_of_throw[index] == number_of_pin)
-	  ? (score_of_throw[index + 1] == number_of_pin) ? 'x' : '0' + score_of_throw[index + 1]
-	  : ((score_of_throw[index] + score_of_throw[index + 1]) == number_of_pin) ? '/' : '0' + score_of_throw[index + 1];
+  // 最終フレームの上段の出力
+  if(get_frame_result(frame_data[last_index]) == None) {
+    // 未投球
+    std::printf("|-|-|-|\n");
+  } else {
+    // 投球済みなら結果表示
+    char score[3] = { '-', '-', '-' }; 
+    size_t index = get_score_index_of_frame(frame_data[last_index]);
+
+    score[0] = (score_of_throw[index] == number_of_pin) ? 'x' : '0' + score_of_throw[index];
+    score[1] = (score_of_throw[index] == number_of_pin)
+      ? (score_of_throw[index + 1] == number_of_pin) ? 'x' : '0' + score_of_throw[index + 1]
+      : ((score_of_throw[index] + score_of_throw[index + 1]) == number_of_pin) ? '/' : '0' + score_of_throw[index + 1];
     score[2] = (score_of_throw[index + 2] == number_of_pin) ? 'x' : '0' + score_of_throw[index + 2];
     std::printf("|%c|%c|%c|\n", score[0], score[1], score[2]);
-  } else {
-    std::printf("|-|-|-|\n");
   }
 
-  // Draw bottom line (frame result)
+  // 下段（フレーム結果）の出力
   for(int i = 0; i < last_index; ++i) {
-    if(get_frame_result_type(frame_data[i]) == None) {
+    if(get_frame_result(frame_data[i]) == None) {
       std::printf("|   ");
     } else {
       int total = 0;
@@ -125,13 +128,16 @@ void draw_score(const game_type& frame_data, const score_of_throw_type& score_of
         std::printf("|%3d", total);
     }
   }
-  // Last frame
-  if(get_frame_result_type(frame_data[last_index]) == Last) {
+
+  // 最終フレームの下段の出力
+  if(get_frame_result(frame_data[last_index]) == None) {
+    // 未投球
+    printf("|     |\n");
+  } else {
+    // 投球済み
     int total = 0;
     for(int i = 0; i <= last_index; ++i) total += get_frame_score(frame_data[i], score_of_throw);
     printf("|%5d|\n", total);
-  } else {
-    printf("|     |\n");
   }
 }
 
@@ -159,15 +165,14 @@ int main()
     // 次のフレームになるか？
     if(next_frame) {
       // 次のフレーム。
-      // フレーム数更新
+      // フレーム数更新、フレームデータの生成。通常フレームか最終フレームかで生成が異なる。
       ++frame_index;
-      // フレームデータの生成。通常フレームか最終フレームかで生成が異なる。
-	  frame_data[frame_index] = make_pair(throw_in_game, (frame_index == (frames_in_game - 1)) ? Last : Normal);
+	  frame_data[frame_index] = make_tuple(throw_in_game, (frame_index == (frames_in_game - 1)) ? Last : Normal);
       next_frame = false;
     }
 
     auto& current_frame = frame_data[frame_index];
-    auto throw_in_frame = throw_in_game - get_score_index(current_frame);
+    auto throw_in_frame = throw_in_game - get_score_index_of_frame(current_frame);
     // 投球のスコアの入力
     char score;                             // スコア入力用
     std::cin >> score;                      // スコアの入力
@@ -182,7 +187,7 @@ int main()
 
     // 投球のスコアを保存する。
     // スペアもしくはストライクであれば、残っているピンの数がスコア
-    if(get_frame_result_type(current_frame) == Last) {
+    if(get_frame_result(current_frame) == Last) {
       // 最終フレーム
       if(score == 'S') {
         // ストライクもしくはスペア
@@ -193,8 +198,8 @@ int main()
           score_of_throw[throw_in_game] = number_of_pin;
           break;
         case 1: //二投目。 一投目がストライクならピン数、そうでなければ残ピン数
-          score_of_throw[throw_in_game] = (score_of_throw[get_score_index(current_frame)] != number_of_pin)
-                                        ?  number_of_pin - score_of_throw[get_score_index(current_frame)]
+          score_of_throw[throw_in_game] = (score_of_throw[get_score_index_of_frame(current_frame)] != number_of_pin)
+                                        ?  number_of_pin - score_of_throw[get_score_index_of_frame(current_frame)]
                                         : number_of_pin;
           break;
         default:
@@ -203,7 +208,7 @@ int main()
       } else {
         // 最終フレーム
         score_of_throw[throw_in_game] = pos;
-        auto score_of_frame = score_of_throw[get_score_index(current_frame)] + pos;
+        auto score_of_frame = score_of_throw[get_score_index_of_frame(current_frame)] + pos;
         if(((throw_in_frame == 1) && (score_of_frame < number_of_pin)) || (throw_in_frame == 2)) {
           game_over = true;
         }
@@ -212,7 +217,7 @@ int main()
       // 最終フレーム以外
       if(score == 'S') {
         // スペアもしくはストライクであれば、スコアは残りのピンの数
-        score_of_throw[throw_in_game] = number_of_pin - score_of_throw[get_score_index(current_frame)];
+        score_of_throw[throw_in_game] = number_of_pin - score_of_throw[get_score_index_of_frame(current_frame)];
         set_frame_result_type(current_frame, (throw_in_frame == 0) ? Strike : Spare);
         next_frame = true;
       } else {
